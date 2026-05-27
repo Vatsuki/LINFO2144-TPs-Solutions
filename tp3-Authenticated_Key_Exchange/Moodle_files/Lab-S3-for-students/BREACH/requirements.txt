@@ -1,0 +1,4 @@
+flask
+Flask-Compress
+Flask-WTF
+requests
